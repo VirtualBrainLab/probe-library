@@ -1,0 +1,3 @@
+[submodule "probeinterface_library"]
+	path = probeinterface_library
+	url = https://github.com/SpikeInterface/probeinterface_library.git
