@@ -11,6 +11,8 @@ import ssl
 import csv
 from pathlib import Path
 from typing import List, Tuple, Optional, Dict, Any
+import json
+import numpy as np
 
 from probeinterface import get_probe, Probe
 from probeinterface import (
@@ -240,6 +242,54 @@ class ProbeLibraryGenerator:
             print(f"✗ Failed to generate OBJ for {filename}: {e}")
             return False
 
+    def _calculate_tip_coords(self, probe: Probe) -> list:
+        """Calculate tip coordinates for a probe."""
+        contour = np.array(getattr(probe, "probe_planar_contour", []))
+        tip_coords = []
+        if contour.shape[0] > 0:
+            # Find all points with the minimum y value (the tips)
+            min_y = np.min(contour[:, 1])
+            tip_points = contour[np.isclose(contour[:, 1], min_y)]
+            # If multiple tips at same y, group by unique x
+            unique_x = np.unique(np.round(tip_points[:, 0], decimals=2))
+            for x in unique_x:
+                tip = tip_points[
+                    np.isclose(np.round(tip_points[:, 0], decimals=2), x)
+                ][0]
+                tip_coords.append([float(tip[0]), float(tip[1]), 0.0])
+        else:
+            # fallback: use lowest y contact for each shank
+            positions = np.array(probe.contact_positions)
+            shank_ids = np.array(probe.shank_ids)
+            unique_shanks = np.unique(shank_ids)
+            ndim = probe.ndim
+            for shank in unique_shanks:
+                shank_positions = positions[shank_ids == shank]
+                if shank_positions.shape[0] == 0:
+                    tip_coords.append(None)
+                    continue
+                tip_elec = shank_positions[
+                    np.argmin(shank_positions[:, 1])
+                ]
+                if ndim == 2:
+                    x, y = tip_elec
+                    z = 0.0
+                else:
+                    x, y, z = tip_elec
+                tip_coords.append([float(x), float(y), float(z)])
+        return tip_coords
+
+    def _get_top_coordinate(self, probe: Probe) -> list:
+        """Compute the top coordinate as midpoint of min/max X and max Y from probe contour."""
+        contour = np.array(getattr(probe, "probe_planar_contour", []))
+        if contour.shape[0] == 0:
+            return [None, None, None]
+        min_x = np.min(contour[:, 0])
+        max_x = np.max(contour[:, 0])
+        max_y = np.max(contour[:, 1])
+        mid_x = (min_x + max_x) / 2.0
+        return [float(mid_x), float(max_y), 0.0]
+
     def generate_metadata_json(
         self,
         probe: Probe,
@@ -248,42 +298,8 @@ class ProbeLibraryGenerator:
         manufacturer: str = "unknown",
     ) -> bool:
         try:
-            import json
-            import numpy as np
-
-            contour = np.array(getattr(probe, "probe_planar_contour", []))
-            tip_coords = []
-            if contour.shape[0] > 0:
-                # Find all points with the minimum y value (the tips)
-                min_y = np.min(contour[:, 1])
-                tip_points = contour[np.isclose(contour[:, 1], min_y)]
-                # If multiple tips at same y, group by unique x
-                unique_x = np.unique(np.round(tip_points[:, 0], decimals=2))
-                for x in unique_x:
-                    tip = tip_points[
-                        np.isclose(np.round(tip_points[:, 0], decimals=2), x)
-                    ][0]
-                    tip_coords.append([float(tip[0]), float(tip[1]), 0.0])
-            else:
-                # fallback: use lowest y contact for each shank
-                positions = np.array(probe.contact_positions)
-                shank_ids = np.array(probe.shank_ids)
-                unique_shanks = np.unique(shank_ids)
-                ndim = probe.ndim
-                for shank in unique_shanks:
-                    shank_positions = positions[shank_ids == shank]
-                    if shank_positions.shape[0] == 0:
-                        tip_coords.append(None)
-                        continue
-                    tip_elec = shank_positions[
-                        np.argmin(shank_positions[:, 1])
-                    ]
-                    if ndim == 2:
-                        x, y = tip_elec
-                        z = 0.0
-                    else:
-                        x, y, z = tip_elec
-                    tip_coords.append([float(x), float(y), float(z)])
+            tip_coords = self._calculate_tip_coords(probe)
+            top_coord = self._get_top_coordinate(probe)
             metadata = {
                 "name": filename.replace("_", " ").title(),
                 "type": probe_type,
@@ -291,6 +307,7 @@ class ProbeLibraryGenerator:
                 "sites": probe.get_contact_count(),
                 "shanks": probe.get_shank_count(),
                 "tip_coordinates": tip_coords,
+                "top_coordinate": top_coord,
                 "references": "Generated using probeinterface library",
                 "spec": "https://probeinterface.readthedocs.io/",
             }

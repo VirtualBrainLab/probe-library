@@ -18,6 +18,7 @@ dynamic = ["version"]
 
 dependencies = [
     'probeinterface',
+    'numpy',
 ]
 
 [dependency-groups]
