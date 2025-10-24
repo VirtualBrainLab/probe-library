@@ -242,7 +242,7 @@ class ProbeLibraryGenerator:
             print(f"✗ Failed to generate OBJ for {filename}: {e}")
             return False
 
-    def _calculate_tip_coords(self, probe: Probe) -> list:
+    def _calculate_tip_coords(self, probe: Probe) -> tuple[list, list]:
         """Calculate tip coordinates for a probe."""
         contour = np.array(getattr(probe, "probe_planar_contour", []))
         tip_coords = []
@@ -277,7 +277,9 @@ class ProbeLibraryGenerator:
                 else:
                     x, y, z = tip_elec
                 tip_coords.append([float(x), float(y), float(z)])
-        return tip_coords
+        
+        center_coord = np.mean(np.array(tip_coords), axis=0)
+        return tip_coords, center_coord
 
     def _get_top_coordinate(self, probe: Probe) -> list:
         """Compute the top coordinate as midpoint of min/max X and max Y from probe contour."""
@@ -298,7 +300,7 @@ class ProbeLibraryGenerator:
         manufacturer: str = "unknown",
     ) -> bool:
         try:
-            tip_coords = self._calculate_tip_coords(probe)
+            tip_coords, center_coord = self._calculate_tip_coords(probe)
             top_coord = self._get_top_coordinate(probe)
             metadata = {
                 "name": filename.replace("_", " ").title(),
@@ -307,6 +309,7 @@ class ProbeLibraryGenerator:
                 "sites": probe.get_contact_count(),
                 "shanks": probe.get_shank_count(),
                 "tip_coordinates": tip_coords,
+                "center_coordinate": list(center_coord),
                 "top_coordinate": top_coord,
                 "references": "Generated using probeinterface library",
                 "spec": "https://probeinterface.readthedocs.io/",
