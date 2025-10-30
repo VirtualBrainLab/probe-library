@@ -21,7 +21,7 @@ dependencies = [
     'numpy',
 ]
 
-[dependency-groups]
+[project.optional-dependencies]
 dev = [
     'black',
     'coverage',
